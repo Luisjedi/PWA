@@ -1,1 +1,17 @@
-
+{
+  "name": "Extrator de Texto OCR",
+  "short_name": "OCR Texto",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "description": "Extraia texto de imagens e prints facilmente.",
+  "icons": [
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/OCR_icon.svg/512px-OCR_icon.svg.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
