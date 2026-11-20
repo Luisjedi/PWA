@@ -1,1 +1,460 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Extrair Texto OCR</title>
+  
+  <!-- NOVIDADE AQUI: Link para o Manifest e o ícone da Apple -->
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/OCR_icon.svg/512px-OCR_icon.svg.png" />
+  
+  <!-- Carrega a biblioteca do Tesseract OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
 
+    header {
+      background: #1e293b;
+      padding: 15px;
+      text-align: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      z-index: 10;
+    }
+
+    header h1 { font-size: 1.2rem; color: #38bdf8; }
+
+    .container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 15px;
+      gap: 15px;
+      max-width: 800px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Área de Upload */
+    .upload-box {
+      border: 2px dashed #475569;
+      border-radius: 12px;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      background: #1e293b;
+      transition: 0.2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      height: 100%;
+      min-height: 250px;
+    }
+
+    .upload-box:active { background: #334155; border-color: #38bdf8; }
+    .upload-box svg { width: 48px; height: 48px; color: #38bdf8; }
+    .upload-box p { font-size: 1.1rem; font-weight: 500; }
+    .upload-box small { color: #94a3b8; font-size: 0.85rem; }
+
+    /* Editor de Imagem */
+    .editor-area { display: none; flex-direction: column; gap: 15px; flex: 1; }
+    
+    .canvas-container {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      max-height: 50vh;
+    }
+
+    #imageCanvas {
+      max-width: 100%;
+      max-height: 50vh;
+      object-fit: contain;
+      cursor: crosshair;
+      touch-action: none; /* Impede rolagem ao selecionar no celular */
+    }
+
+    .selection-box {
+      position: absolute;
+      border: 2px dashed #38bdf8;
+      background: rgba(56, 189, 248, 0.2);
+      display: none;
+      pointer-events: none;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); /* Escurece o resto da imagem */
+    }
+
+    /* Controles */
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .controls button {
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: bold;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      transition: 0.2s;
+      cursor: pointer;
+    }
+
+    .btn-secondary { background: #334155; color: #e2e8f0; }
+    .btn-secondary:active { background: #475569; }
+    
+    .btn-primary { background: #38bdf8; color: #0f172a; grid-column: span 2; }
+    .btn-primary:active { background: #7dd3fc; }
+    .btn-primary:disabled { background: #64748b; cursor: not-allowed; color: #0f172a; }
+
+    /* Resultado */
+    .result-area { display: none; flex-direction: column; gap: 10px; flex: 1; }
+    
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .result-header h2 { font-size: 1.1rem; color: #38bdf8; }
+
+    #btnCopy {
+      background: #10b981; color: #fff; padding: 8px 16px; 
+      border-radius: 6px; border: none; font-weight: bold; cursor: pointer;
+    }
+    #btnCopy:active { background: #059669; }
+
+    #outputText {
+      width: 100%;
+      flex: 1;
+      min-height: 150px;
+      padding: 15px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-family: monospace;
+      font-size: 1rem;
+      resize: none;
+    }
+
+    /* Status / Loading */
+    #status {
+      text-align: center;
+      color: #fbbf24;
+      font-size: 0.9rem;
+      min-height: 20px;
+      padding: 5px;
+    }
+
+    /* Botão Voltar */
+    #btnReset {
+      background: none; border: none; color: #94a3b8; 
+      text-decoration: underline; margin-top: 10px; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>📸 Extrator de Texto</h1>
+  </header>
+
+  <div class="container">
+    
+    <!-- Tela Inicial -->
+    <div id="uploadBox" class="upload-box">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+      <p>Toque para escolher uma imagem</p>
+      <small>Print, foto ou screenshot</small>
+      <input type="file" id="fileInput" accept="image/*" hidden />
+    </div>
+
+    <!-- Tela de Edição -->
+    <div id="editorArea" class="editor-area">
+      <div class="canvas-container">
+        <canvas id="imageCanvas"></canvas>
+        <div id="selectionBox" class="selection-box"></div>
+      </div>
+      
+      <div id="status"></div>
+      
+      <div class="controls">
+        <button id="btnFull" class="btn-secondary">Imagem Inteira</button>
+        <button id="btnClear" class="btn-secondary">Limpar Seleção</button>
+        <button id="btnExtract" class="btn-primary">Extrair Texto</button>
+      </div>
+      
+      <button id="btnReset">Trocar Imagem</button>
+    </div>
+
+    <!-- Tela de Resultado -->
+    <div id="resultArea" class="result-area">
+      <div class="result-header">
+        <h2>Texto Extraído:</h2>
+        <button id="btnCopy">📋 Copiar</button>
+      </div>
+      <textarea id="outputText" placeholder="O texto extraído aparecerá aqui..."></textarea>
+      <button id="btnReset2" class="btn-secondary" style="padding: 14px; border-radius: 8px; width: 100%;">Extrair de outra imagem</button>
+    </div>
+
+  </div>
+
+  <script>
+    // Variáveis de estado
+    const fileInput = document.getElementById('fileInput');
+    const uploadBox = document.getElementById('uploadBox');
+    const editorArea = document.getElementById('editorArea');
+    const resultArea = document.getElementById('resultArea');
+    const canvas = document.getElementById('imageCanvas');
+    const ctx = canvas.getContext('2d');
+    const selectionBox = document.getElementById('selectionBox');
+    const statusEl = document.getElementById('status');
+    const outputText = document.getElementById('outputText');
+    const btnExtract = document.getElementById('btnExtract');
+    
+    let currentImage = null;
+    let selection = null; // {x, y, w, h}
+    let isDrawing = false;
+    let startPoint = null;
+
+    // ===== REGISTRAR O SERVICE WORKER (PARA PWA) =====
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(reg => console.log('Service Worker registrado!', reg))
+          .catch(err => console.log('Erro ao registrar Service Worker', err));
+      });
+    }
+
+    // ===== UPLOAD =====
+    uploadBox.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          currentImage = img;
+          
+          // Ajusta o canvas para o tamanho da imagem
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          
+          // Muda as telas
+          uploadBox.style.display = 'none';
+          editorArea.style.display = 'flex';
+          resultArea.style.display = 'none';
+          statusEl.innerText = 'Desenhe um retângulo sobre o texto.';
+          clearSelection();
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // ===== SELEÇÃO (MOUSE E TOQUE) =====
+    function getCoords(e) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+      };
+    }
+
+    function startDraw(e) {
+      isDrawing = true;
+      startPoint = getCoords(e);
+      clearSelection();
+    }
+
+    function draw(e) {
+      if (!isDrawing) return;
+      e.preventDefault();
+      
+      const currentPoint = getCoords(e);
+      
+      const x = Math.min(startPoint.x, currentPoint.x);
+      const y = Math.min(startPoint.y, currentPoint.y);
+      const w = Math.abs(currentPoint.x - startPoint.x);
+      const h = Math.abs(currentPoint.y - startPoint.y);
+      
+      selection = { x, y, w, h };
+      updateSelectionUI();
+    }
+
+    function endDraw() {
+      isDrawing = false;
+      if (selection && (selection.w < 10 || selection.h < 10)) {
+        clearSelection();
+      } else if (selection) {
+        statusEl.innerText = 'Área selecionada. Toque em "Extrair Texto".';
+      }
+    }
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', endDraw);
+    
+    canvas.addEventListener('touchstart', startDraw, { passive: false });
+    canvas.addEventListener('touchmove', draw, { passive: false });
+    canvas.addEventListener('touchend', endDraw);
+
+    function updateSelectionUI() {
+      if (!selection || selection.w === 0) {
+        selectionBox.style.display = 'none';
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = rect.width / canvas.width;
+      const scaleY = rect.height / canvas.height;
+
+      selectionBox.style.display = 'block';
+      selectionBox.style.left = `${selection.x * scaleX}px`;
+      selectionBox.style.top = `${selection.y * scaleY}px`;
+      selectionBox.style.width = `${selection.w * scaleX}px`;
+      selectionBox.style.height = `${selection.h * scaleY}px`;
+    }
+
+    function clearSelection() {
+      selection = null;
+      selectionBox.style.display = 'none';
+    }
+
+    // Ajustar caixinha se a tela girar
+    window.addEventListener('resize', updateSelectionUI);
+
+    // ===== BOTÕES =====
+    document.getElementById('btnClear').addEventListener('click', () => {
+      clearSelection();
+      statusEl.innerText = 'Desenhe um retângulo sobre o texto.';
+    });
+
+    document.getElementById('btnFull').addEventListener('click', () => {
+      selection = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+      updateSelectionUI();
+      statusEl.innerText = 'Imagem inteira selecionada. Toque em "Extrair Texto".';
+    });
+
+    // ===== EXTRAIR TEXTO (OCR) =====
+    btnExtract.addEventListener('click', async () => {
+      if (!currentImage) return;
+      
+      // Se não tiver seleção, pega a imagem toda
+      const area = selection || { x: 0, y: 0, w: canvas.width, h: canvas.height };
+      
+      // Cria um canvas temporário só com o recorte
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = area.w;
+      tempCanvas.height = area.h;
+      const tempCtx = tempCanvas.getContext('2d');
+      
+      tempCtx.drawImage(
+        currentImage,
+        area.x, area.y, area.w, area.h,
+        0, 0, area.w, area.h
+      );
+
+      btnExtract.disabled = true;
+      statusEl.innerText = '🔍 Iniciando leitura (pode demorar na 1ª vez)...';
+
+      try {
+        // Cria o worker do Tesseract para Português e Inglês
+        const worker = await Tesseract.createWorker('por+eng', 1, {
+          logger: m => {
+            if (m.status === 'recognizing text') {
+              statusEl.innerText = `🔍 Lendo texto... ${Math.round(m.progress * 100)}%`;
+            }
+          }
+        });
+
+        const { data: { text } } = await worker.recognize(tempCanvas);
+        await worker.terminate();
+
+        // Mostra o resultado
+        outputText.value = text.trim();
+        resultArea.style.display = 'flex';
+        editorArea.style.display = 'none';
+        
+      } catch (error) {
+        console.error(error);
+        statusEl.innerText = '❌ Erro ao processar. Tente novamente.';
+      } finally {
+        btnExtract.disabled = false;
+      }
+    });
+
+    // ===== COPIAR TEXTO =====
+    document.getElementById('btnCopy').addEventListener('click', async () => {
+      const text = outputText.value;
+      if (!text) return;
+
+      try {
+        await navigator.clipboard.writeText(text);
+        const btn = document.getElementById('btnCopy');
+        btn.innerText = '✅ Copiado!';
+        btn.style.background = '#059669';
+        setTimeout(() => {
+          btn.innerText = '📋 Copiar';
+          btn.style.background = '#10b981';
+        }, 2000);
+      } catch (err) {
+        // Fallback para navegadores antigos
+        outputText.select();
+        document.execCommand('copy');
+        alert('Texto copiado!');
+      }
+    });
+
+    // ===== RESETAR =====
+    function resetApp() {
+      currentImage = null;
+      fileInput.value = '';
+      uploadBox.style.display = 'flex';
+      editorArea.style.display = 'none';
+      resultArea.style.display = 'none';
+      clearSelection();
+      outputText.value = '';
+      statusEl.innerText = '';
+    }
+
+    document.getElementById('btnReset').addEventListener('click', resetApp);
+    document.getElementById('btnReset2').addEventListener('click', resetApp);
+
+  </script>
+</body>
+</html>
